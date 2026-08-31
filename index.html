@@ -317,19 +317,51 @@
   }
   .empty-state .big{font-family:'Fraunces',serif; font-size:20px; color:var(--lake-dark); margin-bottom:6px;}
 
-  .load-more-wrap{text-align:center; margin-top:16px;}
-  #loadMoreBtn{
-    padding:10px 22px;
-    border-radius:9px;
-    border:1px solid var(--lake);
-    background:transparent;
-    color:var(--lake);
+  .pagination{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    margin-top:22px;
+    margin-bottom:22px;
+    flex-wrap:wrap;
+  }
+  .page-btn{
+    min-width:36px;
+    height:36px;
+    padding:0 10px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:var(--card);
+    color:var(--ink-muted);
     font-family:inherit;
-    font-size:14px;
-    font-weight:500;
+    font-size:13.5px;
     cursor:pointer;
   }
-  #loadMoreBtn:hover{background:var(--lake); color:#fff;}
+  .page-btn:hover:not(:disabled){background:var(--bg-deep); color:var(--ink);}
+  .page-btn:disabled{opacity:0.4; cursor:default;}
+  .page-btn.active{background:var(--lake); border-color:var(--lake); color:#fff; font-weight:600;}
+  .page-ellipsis{color:var(--ink-faint); padding:0 2px; font-size:13.5px;}
+  .page-jump{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    margin-left:10px;
+    font-size:13px;
+    color:var(--ink-muted);
+  }
+  .page-jump input{
+    width:52px;
+    padding:7px 8px;
+    border:1px solid var(--border);
+    border-radius:8px;
+    font-family:inherit;
+    font-size:13.5px;
+    text-align:center;
+    background:var(--bg);
+    color:var(--ink);
+  }
+  .page-jump input:focus{outline:2px solid var(--lake); outline-offset:1px;}
 
   ::selection{background:var(--lake); color:#fff;}
 </style>
@@ -372,14 +404,14 @@
   <div class="list-header">
     <h2>Responses</h2>
     <select id="sortSelect">
-      <option value="default">Sort: Survey order</option>
+      <option value="oldest">Sort: Oldest first</option>
+      <option value="newest">Sort: Newest first</option>
       <option value="longest">Sort: Longest first</option>
     </select>
   </div>
+  <div class="pagination" id="paginationTop"></div>
   <div id="responseList"></div>
-  <div class="load-more-wrap" id="loadMoreWrap" style="display:none;">
-    <button id="loadMoreBtn">Show more responses</button>
-  </div>
+  <div class="pagination" id="pagination"></div>
 
 </div>
 
@@ -395,8 +427,9 @@ const state = {
   voter: '',
   propTax: '',
   theme: '',
-  sort: 'default',
-  visibleCount: 40,
+  sort: 'oldest',
+  page: 1,
+  perPage: 25,
 };
 
 function populateSelect(id, values, formatter){
@@ -481,7 +514,7 @@ function clearFilter(key){
   if (key === 'voter'){ state.voter=''; document.getElementById('filterVoter').value=''; }
   if (key === 'propTax'){ state.propTax=''; document.getElementById('filterPropTax').value=''; }
   if (key === 'theme'){ state.theme=''; }
-  state.visibleCount = 40;
+  state.page = 1;
   renderAll();
 }
 
@@ -510,7 +543,7 @@ function renderThemes(){
     `;
     row.addEventListener('click', () => {
       state.theme = (state.theme === theme) ? '' : theme;
-      state.visibleCount = 40;
+      state.page = 1;
       renderAll();
     });
     container.appendChild(row);
@@ -519,6 +552,7 @@ function renderThemes(){
 
 function sortRecords(list){
   const arr = list.slice();
+  if (state.sort === 'newest') arr.reverse();
   if (state.sort === 'longest') arr.sort((a,b) => b.c.length - a.c.length);
   return arr;
 }
@@ -531,13 +565,19 @@ function renderList(){
 
   listEl.innerHTML = '';
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / state.perPage));
+  if (state.page > totalPages) state.page = totalPages;
+  if (state.page < 1) state.page = 1;
+
   if (filtered.length === 0){
     listEl.innerHTML = `<div class="empty-state"><div class="big">No responses match these filters</div>Try clearing a filter or broadening your search.</div>`;
-    document.getElementById('loadMoreWrap').style.display = 'none';
+    document.getElementById('pagination').innerHTML = '';
+    document.getElementById('paginationTop').innerHTML = '';
     return;
   }
 
-  const toShow = filtered.slice(0, state.visibleCount);
+  const startIdx = (state.page - 1) * state.perPage;
+  const toShow = filtered.slice(startIdx, startIdx + state.perPage);
 
   toShow.forEach(r => {
     const card = document.createElement('div');
@@ -562,16 +602,64 @@ function renderList(){
     listEl.appendChild(card);
   });
 
-  const loadMoreWrap = document.getElementById('loadMoreWrap');
-  if (filtered.length > state.visibleCount){
-    loadMoreWrap.style.display = 'block';
-    document.getElementById('loadMoreBtn').onclick = () => {
-      state.visibleCount += 40;
-      renderList();
-    };
-  } else {
-    loadMoreWrap.style.display = 'none';
-  }
+  renderPagination(totalPages);
+}
+
+function renderPagination(totalPages){
+  const containers = [document.getElementById('paginationTop'), document.getElementById('pagination')];
+  containers.forEach(c => c.innerHTML = '');
+  if (totalPages <= 1) return;
+
+  const goToPage = (p) => {
+    state.page = Math.min(Math.max(1, p), totalPages);
+    renderList();
+    document.querySelector('.list-header').scrollIntoView({behavior:'smooth', block:'start'});
+  };
+
+  const makeBtn = (label, page, opts) => {
+    opts = opts || {};
+    const btn = document.createElement('button');
+    btn.className = 'page-btn' + (opts.active ? ' active' : '');
+    btn.textContent = label;
+    btn.disabled = !!opts.disabled;
+    if (!opts.disabled) btn.addEventListener('click', () => goToPage(page));
+    return btn;
+  };
+
+  const pages = new Set([1, totalPages, state.page, state.page - 1, state.page + 1]);
+  const sorted = Array.from(pages).filter(p => p >= 1 && p <= totalPages).sort((a,b) => a-b);
+
+  containers.forEach((el, idx) => {
+    el.appendChild(makeBtn('Prev', state.page - 1, {disabled: state.page === 1}));
+
+    let prev = 0;
+    sorted.forEach(p => {
+      if (prev && p - prev > 1){
+        const dots = document.createElement('span');
+        dots.className = 'page-ellipsis';
+        dots.textContent = '…';
+        el.appendChild(dots);
+      }
+      el.appendChild(makeBtn(String(p), p, {active: p === state.page}));
+      prev = p;
+    });
+
+    el.appendChild(makeBtn('Next', state.page + 1, {disabled: state.page === totalPages}));
+
+    const jump = document.createElement('div');
+    jump.className = 'page-jump';
+    jump.innerHTML = `<span>Go to page</span> <input type="number" min="1" max="${totalPages}" value="${state.page}"> <span>of ${totalPages}</span>`;
+    const input = jump.querySelector('input');
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter'){
+        goToPage(parseInt(input.value, 10) || 1);
+      }
+    });
+    input.addEventListener('blur', () => {
+      goToPage(parseInt(input.value, 10) || 1);
+    });
+    el.appendChild(jump);
+  });
 }
 
 function renderAll(){
@@ -585,29 +673,29 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
   clearTimeout(searchTimeout);
   searchTimeout = setTimeout(() => {
     state.search = e.target.value.trim();
-    state.visibleCount = 40;
+    state.page = 1;
     renderAll();
   }, 150);
 });
 
-document.getElementById('filterFacility').addEventListener('change', e => { state.facility = e.target.value; state.visibleCount=40; renderAll(); });
-document.getElementById('filterImportance').addEventListener('change', e => { state.importance = e.target.value; state.visibleCount=40; renderAll(); });
-document.getElementById('filterResident').addEventListener('change', e => { state.resident = e.target.value; state.visibleCount=40; renderAll(); });
-document.getElementById('filterVoter').addEventListener('change', e => { state.voter = e.target.value; state.visibleCount=40; renderAll(); });
-document.getElementById('filterPropTax').addEventListener('change', e => { state.propTax = e.target.value; state.visibleCount=40; renderAll(); });
-document.getElementById('sortSelect').addEventListener('change', e => { state.sort = e.target.value; renderList(); });
+document.getElementById('filterFacility').addEventListener('change', e => { state.facility = e.target.value; state.page=1; renderAll(); });
+document.getElementById('filterImportance').addEventListener('change', e => { state.importance = e.target.value; state.page=1; renderAll(); });
+document.getElementById('filterResident').addEventListener('change', e => { state.resident = e.target.value; state.page=1; renderAll(); });
+document.getElementById('filterVoter').addEventListener('change', e => { state.voter = e.target.value; state.page=1; renderAll(); });
+document.getElementById('filterPropTax').addEventListener('change', e => { state.propTax = e.target.value; state.page=1; renderAll(); });
+document.getElementById('sortSelect').addEventListener('change', e => { state.sort = e.target.value; state.page = 1; renderList(); });
 
 document.getElementById('resetBtn').addEventListener('click', () => {
   state.search=''; state.facility=''; state.importance=''; state.resident='';
-  state.voter=''; state.propTax=''; state.theme=''; state.sort='default';
-  state.visibleCount = 40;
+  state.voter=''; state.propTax=''; state.theme=''; state.sort='oldest';
+  state.page = 1;
   document.getElementById('searchInput').value='';
   document.getElementById('filterFacility').value='';
   document.getElementById('filterImportance').value='';
   document.getElementById('filterResident').value='';
   document.getElementById('filterVoter').value='';
   document.getElementById('filterPropTax').value='';
-  document.getElementById('sortSelect').value='default';
+  document.getElementById('sortSelect').value='oldest';
   renderAll();
 });
 
