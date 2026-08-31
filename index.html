@@ -340,11 +340,10 @@
   <header>
     <p class="eyebrow">Tahoe City Community Center Feasibility Survey</p>
     <h1>What residents are telling us, in their own words</h1>
-    <p class="sub">Every open-ended comment from the survey, filterable by how each person answered the rest of the questionnaire — with sentiment and theme patterns that recalculate as you filter.</p>
+    <p class="sub">Every open-ended comment from the survey, filterable by how each person answered the rest of the questionnaire — with theme patterns that recalculate as you filter.</p>
     <div class="hero-stats">
       <div class="hero-stat"><div class="num" id="statTotal">—</div><div class="label">responses collected</div></div>
       <div class="hero-stat"><div class="num" id="statShown">—</div><div class="label">matching current filters</div></div>
-      <div class="hero-stat"><div class="num" id="statPositivePct">—</div><div class="label">net-positive in tone</div></div>
     </div>
   </header>
 
@@ -364,18 +363,10 @@
     <div class="filter-status" id="activeChips"></div>
   </div>
 
-  <div class="analysis-grid">
-    <div class="panel">
-      <h2>Sentiment</h2>
-      <p class="panel-sub">Click a row to isolate it</p>
-      <div id="sentimentBars"></div>
-      <div class="panel-note">Auto-tagged from response wording (supportive vs. critical language). Read as a directional signal, not a precise score — many comments are nuanced.</div>
-    </div>
-    <div class="panel">
-      <h2>Themes</h2>
-      <p class="panel-sub">Click a theme to filter responses that mention it</p>
-      <div class="theme-list" id="themeBars"></div>
-    </div>
+  <div class="panel" style="margin-bottom:22px;">
+    <h2>Themes</h2>
+    <p class="panel-sub">Click a theme to filter responses that mention it</p>
+    <div class="theme-list" id="themeBars"></div>
   </div>
 
   <div class="list-header">
@@ -383,8 +374,6 @@
     <select id="sortSelect">
       <option value="default">Sort: Survey order</option>
       <option value="longest">Sort: Longest first</option>
-      <option value="pos">Sort: Most positive first</option>
-      <option value="neg">Sort: Most critical first</option>
     </select>
   </div>
   <div id="responseList"></div>
@@ -398,14 +387,6 @@
 <script>
 const DATA = JSON.parse(document.getElementById('data-blob').textContent);
 
-const SENT_ORDER = ['positive','mixed','neutral','negative'];
-const SENT_META = {
-  positive: {label:'Positive', color:'var(--positive)', bg:'var(--positive-bg)'},
-  mixed:    {label:'Mixed', color:'var(--mixed)', bg:'var(--mixed-bg)'},
-  neutral:  {label:'Neutral', color:'var(--neutral)', bg:'var(--neutral-bg)'},
-  negative: {label:'Critical', color:'var(--negative)', bg:'var(--negative-bg)'},
-};
-
 const state = {
   search: '',
   facility: '',
@@ -413,13 +394,10 @@ const state = {
   resident: '',
   voter: '',
   propTax: '',
-  sentiment: '',
   theme: '',
   sort: 'default',
   visibleCount: 40,
 };
-
-function uniqueSorted(arr){ return Array.from(new Set(arr)).sort(); }
 
 function populateSelect(id, values, formatter){
   const el = document.getElementById(id);
@@ -454,7 +432,6 @@ function matches(r, opts){
   if (skip !== 'resident' && state.resident && !r.rt.includes(state.resident)) return false;
   if (skip !== 'voter' && state.voter && r.rv !== state.voter) return false;
   if (skip !== 'propTax' && state.propTax && r.pt !== state.propTax) return false;
-  if (skip !== 'sentiment' && state.sentiment && r.s !== state.sentiment) return false;
   if (skip !== 'theme' && state.theme && !r.t.includes(state.theme)) return false;
   return true;
 }
@@ -479,10 +456,8 @@ function renderChips(){
   if (state.resident) active.push(['resident', state.resident]);
   if (state.voter) active.push(['voter', 'Voter: ' + state.voter]);
   if (state.propTax) active.push(['propTax', 'Pays property tax: ' + state.propTax]);
-  if (state.sentiment) active.push(['sentiment', SENT_META[state.sentiment].label + ' sentiment']);
   if (state.theme) active.push(['theme', state.theme]);
 
-  const filtered = getFiltered();
   const label = document.createElement('span');
   label.textContent = active.length ? '' : 'No filters applied.';
   if (active.length === 0){ wrap.appendChild(label); return; }
@@ -505,40 +480,9 @@ function clearFilter(key){
   if (key === 'resident'){ state.resident=''; document.getElementById('filterResident').value=''; }
   if (key === 'voter'){ state.voter=''; document.getElementById('filterVoter').value=''; }
   if (key === 'propTax'){ state.propTax=''; document.getElementById('filterPropTax').value=''; }
-  if (key === 'sentiment'){ state.sentiment=''; }
   if (key === 'theme'){ state.theme=''; }
   state.visibleCount = 40;
   renderAll();
-}
-
-function renderSentiment(){
-  const container = document.getElementById('sentimentBars');
-  container.innerHTML = '';
-  const base = getFiltered('sentiment');
-  const total = base.length || 1;
-  const counts = {};
-  SENT_ORDER.forEach(s => counts[s] = 0);
-  base.forEach(r => { counts[r.s] = (counts[r.s]||0) + 1; });
-
-  SENT_ORDER.forEach(s => {
-    const meta = SENT_META[s];
-    const count = counts[s];
-    const pct = Math.round((count/total)*100);
-    const row = document.createElement('div');
-    row.className = 'sentiment-row' + (state.sentiment === s ? ' active' : '');
-    row.innerHTML = `
-      <span class="sent-dot" style="background:${meta.color}"></span>
-      <span class="sent-label">${meta.label}</span>
-      <span class="sent-bar-track"><span class="sent-bar-fill" style="width:${pct}%; background:${meta.color}"></span></span>
-      <span class="sent-count">${count} · ${pct}%</span>
-    `;
-    row.addEventListener('click', () => {
-      state.sentiment = (state.sentiment === s) ? '' : s;
-      state.visibleCount = 40;
-      renderAll();
-    });
-    container.appendChild(row);
-  });
 }
 
 function renderThemes(){
@@ -576,14 +520,6 @@ function renderThemes(){
 function sortRecords(list){
   const arr = list.slice();
   if (state.sort === 'longest') arr.sort((a,b) => b.c.length - a.c.length);
-  if (state.sort === 'pos'){
-    const rank = {positive:0, mixed:1, neutral:2, negative:3};
-    arr.sort((a,b) => rank[a.s]-rank[b.s]);
-  }
-  if (state.sort === 'neg'){
-    const rank = {negative:0, mixed:1, neutral:2, positive:3};
-    arr.sort((a,b) => rank[a.s]-rank[b.s]);
-  }
   return arr;
 }
 
@@ -592,9 +528,6 @@ function renderList(){
   const filtered = sortRecords(getFiltered());
 
   document.getElementById('statShown').textContent = filtered.length;
-  const posCount = getFiltered().filter(r => r.s === 'positive').length;
-  const totalShown = getFiltered().length || 1;
-  document.getElementById('statPositivePct').textContent = Math.round((posCount/totalShown)*100) + '%';
 
   listEl.innerHTML = '';
 
@@ -607,7 +540,6 @@ function renderList(){
   const toShow = filtered.slice(0, state.visibleCount);
 
   toShow.forEach(r => {
-    const meta = SENT_META[r.s];
     const card = document.createElement('div');
     card.className = 'response-card';
 
@@ -615,9 +547,6 @@ function renderList(){
 
     card.innerHTML = `
       <div class="response-top">
-        <span class="sent-badge" style="background:${meta.bg}; color:${meta.color}">
-          <span class="dot" style="background:${meta.color}"></span>${meta.label}
-        </span>
         <span class="resp-meta">Response #${r.id + 1}</span>
       </div>
       <div class="response-text">${escapeHtml(r.c)}</div>
@@ -647,7 +576,6 @@ function renderList(){
 
 function renderAll(){
   renderChips();
-  renderSentiment();
   renderThemes();
   renderList();
 }
@@ -671,7 +599,7 @@ document.getElementById('sortSelect').addEventListener('change', e => { state.so
 
 document.getElementById('resetBtn').addEventListener('click', () => {
   state.search=''; state.facility=''; state.importance=''; state.resident='';
-  state.voter=''; state.propTax=''; state.sentiment=''; state.theme=''; state.sort='default';
+  state.voter=''; state.propTax=''; state.theme=''; state.sort='default';
   state.visibleCount = 40;
   document.getElementById('searchInput').value='';
   document.getElementById('filterFacility').value='';
